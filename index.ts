@@ -1,6 +1,6 @@
 import { createBuffer } from '@posthog/plugin-contrib'
 import { Plugin, PluginMeta, PluginEvent, RetryError } from '@posthog/plugin-scaffold'
-import { BigQuery, Table, TableField, TableMetadata } from '@google-cloud/bigquery'
+import { BigQuery, Json, Table, TableField, TableMetadata } from '@google-cloud/bigquery'
 
 type BigQueryPlugin = Plugin<{
     global: {
@@ -137,6 +137,8 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
         throw new Error('No BigQuery client initialized!')
     }
     try {
+        let eventFields: Array<{name: string, type: string}> = []
+        let eventFieldKeys: Array<string> = []
         const rows = events.map((event) => {
             const {
                 event: eventName,
@@ -155,6 +157,14 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             const ip = properties?.['$ip'] || event.ip
             const timestamp = event.timestamp || properties?.timestamp || now || sent_at
             let ingestedProperties = properties
+            const flattenProperties = __flaten_object(properties)
+
+            Object.entries(flattenProperties).forEach(([key, value], index) => {
+                if (eventFields.filter(e => e.name === key).length == 0) {
+                    eventFields.push({ name: key, type: 'STRING' })
+                    eventFieldKeys.push(key)
+                }
+            })
 
             const shouldExportElementsForEvent =
                 eventName === '$autocapture' || config.exportElementsOnAnyEvent === 'Yes'
@@ -174,13 +184,24 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
                     site_url,
                     timestamp: timestamp,
                     bq_ingested_timestamp: new Date().toISOString(),
+                    ...flattenProperties,
                 },
             }
             return object
         })
+        if (eventFieldKeys.length > 0) {
+            eventFieldKeys.forEach(function(eventFieldName) {
+                Object.entries(rows).forEach(([key, value], index) => {
+                    if (Object.keys(value.json).indexOf(eventFieldName) == -1) {
+                        value.json[eventFieldName] = null
+                    }
+                })
+            })
+        }
 
         const start = Date.now()
-        await global.bigQueryTable.insert(rows, insertOptions)
+        await __sync_new_fields(eventFields, global, config); // sync new keys
+        await global.bigQueryTable.insert(rows, insertOptions);
         const end = Date.now() - start
 
         console.log(
@@ -266,4 +287,78 @@ export const onEvent: BigQueryPlugin['onEvent'] = (event, { global }) => {
     if (!global.exportEventsToIgnore.has(event.event)) {
         global.exportEventsBuffer.add(event, JSON.stringify(event).length)
     }
+}
+
+async function __sync_new_fields(eventFields: TableField[], global: any, config: any): Promise<void> {
+    try {
+        const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
+
+        if (!metadata.schema || !metadata.schema.fields) {
+            throw new Error('Can not get metadata for table. Please check if the table schema is defined.')
+        }
+
+        const existingFields = metadata.schema.fields
+
+        const fieldsToAdd = eventFields.filter(
+            ({ name }) => !existingFields.find((f: any) => f.name === name),
+        )
+        if (fieldsToAdd.length > 0) {
+            console.info(
+                `Incomplete schema on BigQuery table! Adding the following fields to reach parity: ${JSON.stringify(
+                    fieldsToAdd
+                )}`
+            )
+
+            let result: TableMetadata
+            try {
+                metadata.schema.fields = metadata.schema.fields.concat(fieldsToAdd)
+                ;[result] = await global.bigQueryTable.setMetadata(metadata)
+            } catch (error) {
+                const fieldsToStillAdd = global.bigQueryTableFields.filter(
+                    ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name),
+                )
+
+                if (fieldsToStillAdd.length > 0) {
+                    throw new Error(
+                        `Tried adding fields ${JSON.stringify(fieldsToAdd)}, but ${JSON.stringify(
+                            fieldsToStillAdd,
+                        )} still to add. Can not start plugin.`,
+                    )
+                }
+            }
+        }
+    } catch (error) {
+        // some other error? abort!
+        if (!error.message.includes('Not found')) {
+            throw new Error(error)
+        }
+        console.log(`Creating BigQuery Table - ${config.datasetId}:${config.tableId}`)
+
+        try {
+            await global.bigQueryClient
+                .dataset(config.datasetId)
+                .createTable(config.tableId, { schema: global.bigQueryTableFields })
+        } catch (error) {
+            // a different worker already created the table
+            if (!error.message.includes('Already Exists')) {
+                throw error
+            }
+        }
+    }
+}
+
+function __flaten_object(obj: any) {
+    let result: any = {}
+    for (const i in obj) {
+        if (!obj.hasOwnProperty(i)) continue;
+        if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
+            const temp = __flaten_object(obj[i])
+            for (const j in temp) {
+                result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
+            }
+        } else {
+            result[i.replace(/\$/, '')] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i]
+        }
+    }
+    return result
 }
