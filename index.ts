@@ -290,6 +290,7 @@ export const onEvent: BigQueryPlugin['onEvent'] = (event, { global }) => {
 }
 
 async function __sync_new_fields(eventFields: TableField[], global: any, config: any): Promise<void> {
+    console.log('Global fields Array:', global.bigQueryTableFields);
     try {
         const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
 
