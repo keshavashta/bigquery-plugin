@@ -2,6 +2,8 @@ import { createBuffer } from '@posthog/plugin-contrib'
 import { Plugin, PluginMeta, PluginEvent, RetryError } from '@posthog/plugin-scaffold'
 import { BigQuery, Json, Table, TableField, TableMetadata } from '@google-cloud/bigquery'
 
+let latestSchema: Array<any> = []; // holding the global schema fields
+
 type BigQueryPlugin = Plugin<{
     global: {
         bigQueryClient: BigQuery
@@ -291,6 +293,7 @@ export const onEvent: BigQueryPlugin['onEvent'] = (event, { global }) => {
 
 async function __sync_new_fields(eventFields: TableField[], global: any, config: any): Promise<void> {
     console.log('Global fields Array:', global.bigQueryTableFields);
+    console.log('latestSchema Array:', latestSchema);
     try {
         const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
 
@@ -314,6 +317,7 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
             try {
                 metadata.schema.fields = metadata.schema.fields.concat(fieldsToAdd)
                 ;[result] = await global.bigQueryTable.setMetadata(metadata)
+                latestSchema = metadata.schema.fields; // save into the latest schema
             } catch (error) {
                 const fieldsToStillAdd = global.bigQueryTableFields.filter(
                     ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name),
