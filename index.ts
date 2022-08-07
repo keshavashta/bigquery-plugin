@@ -2,7 +2,7 @@ import { createBuffer } from '@posthog/plugin-contrib'
 import { Plugin, PluginMeta, PluginEvent, RetryError } from '@posthog/plugin-scaffold'
 import { BigQuery, Json, Table, TableField, TableMetadata } from '@google-cloud/bigquery'
 
-let latestSchema: Array<any> = []; // holding the global schema fields
+let latestSchema: Object = {}; // holding the global schema fields
 
 type BigQueryPlugin = Plugin<{
     global: {
@@ -73,6 +73,7 @@ export const setupPlugin: BigQueryPlugin['setupPlugin'] = async (meta) => {
         const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
 
         if (!metadata.schema || !metadata.schema.fields) {
+            // noinspection ExceptionCaughtLocallyJS
             throw new Error('Can not get metadata for table. Please check if the table schema is defined.')
         }
 
@@ -98,6 +99,7 @@ export const setupPlugin: BigQueryPlugin['setupPlugin'] = async (meta) => {
                 )
 
                 if (fieldsToStillAdd.length > 0) {
+                    // noinspection ExceptionCaughtLocallyJS
                     throw new Error(
                         `Tried adding fields ${JSON.stringify(fieldsToAdd)}, but ${JSON.stringify(
                             fieldsToStillAdd
@@ -159,7 +161,7 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             const ip = properties?.['$ip'] || event.ip
             const timestamp = event.timestamp || properties?.timestamp || now || sent_at
             let ingestedProperties = properties
-            const flattenProperties = __flaten_object(properties)
+            const flattenProperties = __flatten_object(properties)
 
             Object.entries(flattenProperties).forEach(([key, value], index) => {
                 if (eventFields.filter(e => e.name === key).length == 0) {
@@ -295,16 +297,22 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     console.log('Global fields Array:', global.bigQueryTableFields);
     console.log('latestSchema Array:', latestSchema);
     try {
-        const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
-
-        if (!metadata.schema || !metadata.schema.fields) {
-            throw new Error('Can not get metadata for table. Please check if the table schema is defined.')
+        if (JSON.stringify(latestSchema) === '{}') {
+            // we'll fetch schema details from metadata for the first time
+            const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
+            if (!metadata.schema || !metadata.schema.fields) {
+                // noinspection ExceptionCaughtLocallyJS
+                throw new Error('Can not get metadata for table. Please check if the table schema is defined.')
+            }
+            metadata.schema.fields.forEach((value) => {
+                // @ts-ignore
+                latestSchema[ value.name ] = value.type;  // populate fields hashmap for existing fields
+            })
         }
 
-        const existingFields = metadata.schema.fields
-
+        // let's find non-existing fields
         const fieldsToAdd = eventFields.filter(
-            ({ name }) => !existingFields.find((f: any) => f.name === name),
+            ({ name }) => !latestSchema.hasOwnProperty(name),
         )
         if (fieldsToAdd.length > 0) {
             console.info(
@@ -314,16 +322,29 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
             )
 
             let result: TableMetadata
+
+            // since there are new fields to add, let's fetch the metadata to sync new fields
+            const [metadata]: TableMetadata[] = await global.bigQueryTable.getMetadata()
+            if (!metadata.schema || !metadata.schema.fields) {
+                // noinspection ExceptionCaughtLocallyJS
+                throw new Error('Can not get metadata for table. Please check if the table schema is defined.')
+            }
             try {
                 metadata.schema.fields = metadata.schema.fields.concat(fieldsToAdd)
                 ;[result] = await global.bigQueryTable.setMetadata(metadata)
-                latestSchema = metadata.schema.fields; // save into the latest schema
+
+                // add to latestSchema again
+                fieldsToAdd.forEach((value) => {
+                    // @ts-ignore
+                    latestSchema[ value.name ] = value.type;
+                });
             } catch (error) {
                 const fieldsToStillAdd = global.bigQueryTableFields.filter(
                     ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name),
                 )
 
                 if (fieldsToStillAdd.length > 0) {
+                    // noinspection ExceptionCaughtLocallyJS
                     throw new Error(
                         `Tried adding fields ${JSON.stringify(fieldsToAdd)}, but ${JSON.stringify(
                             fieldsToStillAdd,
@@ -352,12 +373,12 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     }
 }
 
-function __flaten_object(obj: any) {
+function __flatten_object(obj: any) {
     let result: any = {}
     for (const i in obj) {
         if (!obj.hasOwnProperty(i)) continue;
         if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
-            const temp = __flaten_object(obj[i])
+            const temp = __flatten_object(obj[i])
             for (const j in temp) {
                 result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
             }
