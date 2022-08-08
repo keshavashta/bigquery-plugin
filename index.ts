@@ -162,7 +162,7 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             const timestamp = event.timestamp || properties?.timestamp || now || sent_at
             let ingestedProperties = properties
             const flattenProperties = __flatten_object(properties)
-
+            console.log('Flattern Properties', flattenProperties)
             Object.entries(flattenProperties).forEach(([key, value], index) => {
                 if (eventFields.filter(e => e.name === key).length == 0) {
                     eventFields.push({ name: key, type: 'STRING' })
@@ -193,10 +193,6 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             }
             return object
         })
-
-
-        const start = Date.now()
-        await __sync_new_fields(eventFields, global, config) // sync new keys
         if (eventFieldKeys.length > 0) {
             eventFieldKeys.forEach(function(eventFieldName) {
                 Object.entries(rows).forEach(([key, value], index) => {
@@ -206,6 +202,9 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
                 })
             })
         }
+        const start = Date.now()
+        await __sync_new_fields(eventFields, global, config) // sync new keys
+
         await global.bigQueryTable.insert(rows, insertOptions)
         const end = Date.now() - start
 
