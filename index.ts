@@ -2,7 +2,7 @@ import { createBuffer } from '@posthog/plugin-contrib'
 import { Plugin, PluginMeta, PluginEvent, RetryError } from '@posthog/plugin-scaffold'
 import { BigQuery, Json, Table, TableField, TableMetadata } from '@google-cloud/bigquery'
 
-let latestSchema: Object = {}; // holding the global schema fields
+let latestSchema: Object = {} // holding the global schema fields
 
 type BigQueryPlugin = Plugin<{
     global: {
@@ -79,14 +79,14 @@ export const setupPlugin: BigQueryPlugin['setupPlugin'] = async (meta) => {
 
         const existingFields = metadata.schema.fields
         const fieldsToAdd = global.bigQueryTableFields.filter(
-            ({ name }) => !existingFields.find((f: any) => f.name === name)
+            ({ name }) => !existingFields.find((f: any) => f.name === name),
         )
 
         if (fieldsToAdd.length > 0) {
             console.info(
                 `Incomplete schema on BigQuery table! Adding the following fields to reach parity: ${JSON.stringify(
-                    fieldsToAdd
-                )}`
+                    fieldsToAdd,
+                )}`,
             )
 
             let result: TableMetadata
@@ -95,15 +95,15 @@ export const setupPlugin: BigQueryPlugin['setupPlugin'] = async (meta) => {
                 ;[result] = await global.bigQueryTable.setMetadata(metadata)
             } catch (error) {
                 const fieldsToStillAdd = global.bigQueryTableFields.filter(
-                    ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name)
+                    ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name),
                 )
 
                 if (fieldsToStillAdd.length > 0) {
                     // noinspection ExceptionCaughtLocallyJS
                     throw new Error(
                         `Tried adding fields ${JSON.stringify(fieldsToAdd)}, but ${JSON.stringify(
-                            fieldsToStillAdd
-                        )} still to add. Can not start plugin.`
+                            fieldsToStillAdd,
+                        )} still to add. Can not start plugin.`,
                     )
                 }
             }
@@ -141,7 +141,7 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
         throw new Error('No BigQuery client initialized!')
     }
     try {
-        let eventFields: Array<{name: string, type: string}> = []
+        let eventFields: Array<{ name: string, type: string }> = []
         let eventFieldKeys: Array<string> = []
         const rows = events.map((event) => {
             const {
@@ -172,7 +172,7 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
 
             const shouldExportElementsForEvent =
                 eventName === '$autocapture' || config.exportElementsOnAnyEvent === 'Yes'
- 
+
 
             const object: { json: Record<string, any>; insertId?: string } = {
                 json: {
@@ -193,6 +193,10 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             }
             return object
         })
+
+
+        const start = Date.now()
+        await __sync_new_fields(eventFields, global, config) // sync new keys
         if (eventFieldKeys.length > 0) {
             eventFieldKeys.forEach(function(eventFieldName) {
                 Object.entries(rows).forEach(([key, value], index) => {
@@ -202,21 +206,18 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
                 })
             })
         }
-
-        const start = Date.now()
-        await __sync_new_fields(eventFields, global, config); // sync new keys
-        await global.bigQueryTable.insert(rows, insertOptions);
+        await global.bigQueryTable.insert(rows, insertOptions)
         const end = Date.now() - start
 
         console.log(
             `Inserted ${events.length} ${events.length > 1 ? 'events' : 'event'} to BigQuery. Took ${
                 end / 1000
-            } seconds.`
+            } seconds.`,
         )
     } catch (error) {
         console.error(
             `Error inserting ${events.length} ${events.length > 1 ? 'events' : 'event'} into BigQuery: `,
-            error
+            error,
         )
         throw new RetryError(`Error inserting into BigQuery! ${JSON.stringify(error.errors)}`)
     }
@@ -226,18 +227,18 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
 
 const setupBufferExportCode = (
     meta: PluginMeta<BigQueryPlugin>,
-    exportEvents: (events: PluginEvent[], meta: PluginMeta<BigQueryPlugin>) => Promise<void>
+    exportEvents: (events: PluginEvent[], meta: PluginMeta<BigQueryPlugin>) => Promise<void>,
 ) => {
     const uploadBytes = Math.max(
         1024 * 1024,
-        Math.min(parseInt(meta.config.exportEventsBufferBytes) || 1024 * 1024, 1024 * 1024 * 10)
+        Math.min(parseInt(meta.config.exportEventsBufferBytes) || 1024 * 1024, 1024 * 1024 * 10),
     )
     const uploadSeconds = Math.max(1, Math.min(parseInt(meta.config.exportEventsBufferSeconds) || 30, 600))
 
     meta.global.exportEventsToIgnore = new Set(
         meta.config.exportEventsToIgnore
             ? meta.config.exportEventsToIgnore.split(',').map((event) => event.trim())
-            : null
+            : null,
     )
     meta.global.exportEventsBuffer = createBuffer({
         limit: uploadBytes,
@@ -271,7 +272,7 @@ const setupBufferExportCode = (
                         .runIn(nextRetrySeconds, 'seconds')
                 } else {
                     console.log(
-                        `Dropped batch ${payload.batchId} after retrying ${payload.retriesPerformedSoFar} times`
+                        `Dropped batch ${payload.batchId} after retrying ${payload.retriesPerformedSoFar} times`,
                     )
                 }
             } else {
@@ -294,8 +295,8 @@ export const onEvent: BigQueryPlugin['onEvent'] = (event, { global }) => {
 }
 
 async function __sync_new_fields(eventFields: TableField[], global: any, config: any): Promise<void> {
-    console.log('Global fields Array:', global.bigQueryTableFields);
-    console.log('latestSchema Array:', latestSchema);
+    console.log('Global fields Array:', global.bigQueryTableFields)
+    console.log('latestSchema Array:', latestSchema)
     try {
         if (JSON.stringify(latestSchema) === '{}') {
             // we'll fetch schema details from metadata for the first time
@@ -306,7 +307,7 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
             }
             metadata.schema.fields.forEach((value) => {
                 // @ts-ignore
-                latestSchema[ value.name ] = value.type;  // populate fields hashmap for existing fields
+                latestSchema[value.name] = value.type  // populate fields hashmap for existing fields
             })
         }
 
@@ -317,8 +318,8 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
         if (fieldsToAdd.length > 0) {
             console.info(
                 `Incomplete schema on BigQuery table! Adding the following fields to reach parity: ${JSON.stringify(
-                    fieldsToAdd
-                )}`
+                    fieldsToAdd,
+                )}`,
             )
 
             let result: TableMetadata
@@ -336,8 +337,8 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
                 // add to latestSchema again
                 fieldsToAdd.forEach((value) => {
                     // @ts-ignore
-                    latestSchema[ value.name ] = value.type;
-                });
+                    latestSchema[value.name] = value.type
+                })
             } catch (error) {
                 const fieldsToStillAdd = global.bigQueryTableFields.filter(
                     ({ name }) => !result.schema?.fields?.find((f: any) => f.name === name),
@@ -373,18 +374,27 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     }
 }
 
-function __flatten_object(obj: any) {
-    let result: any = {}
-    for (const i in obj) {
-        if (!obj.hasOwnProperty(i)) continue;
-        if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
-            const temp = __flatten_object(obj[i])
-            for (const j in temp) {
-                result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
-            }
+const __flatten_object = (props, sep = '__', nestedChain = []) => {
+    let newProps = {}
+    for (const [key, value] of Object.entries(props)) {
+        if (key === '$elements' || key === '$groups' || key === '$active_feature_flags') {
+            // Hide 'internal' properties used in event processing
+        } else if (key === '$set') {
+            newProps = { ...newProps, $set: { ...props[key], ...__flatten_object(props[key], sep) } }
+        } else if (key === '$set_once') {
+            newProps = { ...newProps, $set_once: { ...props[key], ...__flatten_object(props[key], sep) } }
+        } else if (Array.isArray(value)) {
+            newProps = { ...newProps, ...__flatten_object(props[key], sep, [...nestedChain, key]) }
+        } else if (value !== null && typeof value === 'object' && Object.keys(value).length > 0) {
+            newProps = { ...newProps, ...__flatten_object(props[key], sep, [...nestedChain, key]) }
         } else {
-            result[i.replace(/\$/, '')] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i]
+            if (nestedChain.length > 0) {
+                newProps[nestedChain.join(sep) + `${sep}${key}`] = value
+            }
         }
     }
-    return result
+    if (nestedChain.length > 0) {
+        return { ...newProps }
+    }
+    return { ...props, ...newProps }
 }
