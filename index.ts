@@ -164,7 +164,7 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             let  flattenProperties = __flatten_object(properties);
             for (const j in flattenProperties) {
                 if(j.includes(".")){
-                    flattenProperties[j.replace(/\./, '__')] = flattenProperties[j];
+                    flattenProperties[j.replaceAll(/\./, '__')] = flattenProperties[j];
                     delete flattenProperties[j];
                 }
             }
