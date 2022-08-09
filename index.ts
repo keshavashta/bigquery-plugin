@@ -373,8 +373,8 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     }
 }
 
-function __flatten_object(obj:any) {
-    let result:any = {}
+function __flatten_object(obj: any) {
+    let result: any = {}
     for (const i in obj) {
         if (!obj.hasOwnProperty(i)) continue
         if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
@@ -384,7 +384,7 @@ function __flatten_object(obj:any) {
                     continue
                 result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
             }
-        }else if (Array.isArray(obj[i])) {
+        } else if (Array.isArray(obj[i])) {
             obj[i].forEach((value, index) => {
                 const temp = __flatten_object(value)
                 // for (const j in temp) {
@@ -397,7 +397,7 @@ function __flatten_object(obj:any) {
         } else {
             if (i.includes('$'))
                 continue
-            result[i.replace(/\$/, '')] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i]
+            result[i.replace(/\$/, '').replace(/\./, '__')] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i]
         }
     }
     return result
