@@ -373,12 +373,12 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     }
 }
 
-function flatten_object(obj:any) {
+function __flatten_object(obj:any) {
     let result:any = {}
     for (const i in obj) {
         if (!obj.hasOwnProperty(i)) continue
         if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
-            const temp = flatten_object(obj[i])
+            const temp = __flatten_object(obj[i])
             for (const j in temp) {
                 if (i.includes('$'))
                     continue
@@ -386,7 +386,7 @@ function flatten_object(obj:any) {
             }
         }else if (Array.isArray(obj[i])) {
             obj[i].forEach((value, index) => {
-                const temp = flatten_object(value)
+                const temp = __flatten_object(value)
                 // for (const j in temp) {
                 //     if (i.includes('$'))
                 //         continue
