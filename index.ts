@@ -161,7 +161,14 @@ export async function exportEventsToBigQuery(events: PluginEvent[], { global, co
             const ip = properties?.['$ip'] || event.ip
             const timestamp = event.timestamp || properties?.timestamp || now || sent_at
             let ingestedProperties = properties
-            const flattenProperties = __flatten_object(properties)
+            const flattenProperties = __flatten_object(properties).map(function(obj,key) {
+                if(key.includes(".")){
+                    obj[key.replace(/\./, '__')] = obj[key];
+                }
+
+                delete obj[key];
+                return obj;
+            });
             console.log('Flattern Properties', flattenProperties)
             Object.entries(flattenProperties).forEach(([key, value], index) => {
                 if (eventFields.filter(e => e.name === key).length == 0) {
