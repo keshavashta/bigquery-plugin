@@ -373,28 +373,27 @@ async function __sync_new_fields(eventFields: TableField[], global: any, config:
     }
 }
 
-function __flatten_object(obj: any) {
-    let result: any = {}
-    for (const i in obj) {
-        if (!obj.hasOwnProperty(i)) continue
-        if (Array.isArray(obj[i])) {
-            obj[i].forEach((value, index) => {
-                const temp = __flatten_object(value)
-                for (const j in temp) {
-                    result[i + '__' + (index + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
-                }
-            })
+const __flatten_object = (props, sep="__", nestedChain = []) => {
+    let newProps = {}
+    for (const [key, value] of Object.entries(props)) {
+        if (key === '$elements' || key === '$groups' || key === '$active_feature_flags') {
+            // Hide 'internal' properties used in event processing
+        } else if (key === '$set') {
 
-        } else if ((typeof obj[i]) === 'object' && !Array.isArray(obj[i])) {
-            const temp = __flatten_object(obj[i])
-            for (const j in temp) {
-                result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
-            }
+        } else if (key === '$set_once') {
+
+        } else if (Array.isArray(value)) {
+            newProps = { ...newProps, ...__flatten_object(props[key], sep, [...nestedChain, key]) }
+        } else if (value !== null && typeof value === 'object' && Object.keys(value).length > 0) {
+            newProps = { ...newProps, ...__flatten_object(props[key], sep, [...nestedChain, key]) }
         } else {
-            if (i.includes('$'))
-                continue
-            result[i.replace(/\$/, '')] = Array.isArray(obj[i]) ? JSON.stringify(obj[i]) : obj[i]
+            if (nestedChain.length > 0) {
+                newProps[(nestedChain.join(sep) + `${sep}${key}`).replace(/\$/, '')] = value
+            }
         }
     }
-    return result
+    if (nestedChain.length > 0) {
+        return { ...newProps }
+    }
+    return { ...props, ...newProps }
 }
