@@ -382,7 +382,7 @@ function __flatten_object(obj: any) {
             for (const j in temp) {
                 if (i.includes('$'))
                     continue
-                result[(i + '__' + j).replace(/\$/g, '')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
+                result[(i + '__' + j).replace(/\$/g, '').replace(/\./, '__')] = Array.isArray(temp[j]) ? JSON.stringify(temp[j]) : temp[j]
             }
         } else if (Array.isArray(obj[i])) {
             obj[i].forEach((value, index) => {
